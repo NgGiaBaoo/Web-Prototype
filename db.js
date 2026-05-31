@@ -2,30 +2,44 @@ const fs = require("fs");
 const mysql = require("mysql2");
 require("dotenv").config({ quiet: true });
 
+function getEnvValue(keys, fallback = undefined) {
+    for (const key of keys) {
+        const value = process.env[key];
+
+        if (value !== undefined && value !== "") {
+            return value;
+        }
+    }
+
+    return fallback;
+}
+
 function buildSslOptions() {
-    const sslMode = String(process.env.DB_SSL || "").toLowerCase();
+    const sslMode = String(getEnvValue(["DB_SSL", "AIVEN_SSL"], "")).toLowerCase();
 
     if (!["true", "required", "1", "yes"].includes(sslMode)) {
         return undefined;
     }
 
-    const caPath = process.env.DB_SSL_CA_PATH || "./ca.pem";
+    const caPath = getEnvValue(["DB_SSL_CA_PATH", "AIVEN_CA_PATH"], "./ca.pem");
 
     return {
         ca: fs.readFileSync(caPath)
     };
 }
 
-const connection = mysql.createConnection({
-    host: process.env.DB_HOST,
-    port: Number(process.env.DB_PORT) || 3306,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    ssl: buildSslOptions()
-});
+function createConnection() {
+    return mysql.createConnection({
+        host: getEnvValue(["DB_HOST", "AIVEN_HOST"]),
+        port: Number(getEnvValue(["DB_PORT", "AIVEN_PORT"], 3306)) || 3306,
+        user: getEnvValue(["DB_USER", "AIVEN_USER"]),
+        password: getEnvValue(["DB_PASSWORD", "AIVEN_PASSWORD"]),
+        database: getEnvValue(["DB_NAME", "AIVEN_DATABASE", "AIVEN_DB_NAME"]),
+        ssl: buildSslOptions()
+    });
+}
 
-function establishConnection(dbConnection = connection) {
+function establishConnection(dbConnection = createConnection()) {
     dbConnection.connect((err) => {
         if (err) {
             console.log("Loi ket noi");
@@ -38,18 +52,19 @@ function establishConnection(dbConnection = connection) {
 }
 
 function query(sql, paramsOrCallback, maybeCallback) {
-    if (typeof paramsOrCallback === "function") {
-        return connection.query(sql, paramsOrCallback);
-    }
-
-    if (typeof maybeCallback === "function") {
+    if (typeof paramsOrCallback === "function" || typeof maybeCallback === "function") {
+        const connection = createConnection();
         return connection.query(sql, paramsOrCallback, maybeCallback);
     }
 
     const params = Array.isArray(paramsOrCallback) ? paramsOrCallback : [];
 
     return new Promise((resolve, reject) => {
+        const connection = createConnection();
+
         connection.query(sql, params, (error, results) => {
+            connection.end(() => {});
+
             if (error) {
                 return reject(error);
             }
@@ -60,28 +75,12 @@ function query(sql, paramsOrCallback, maybeCallback) {
 }
 
 function commitQuery(sql, paramsOrCallback, maybeCallback) {
-    if (typeof paramsOrCallback === "function") {
-        return connection.query(sql, paramsOrCallback);
-    }
-
-    if (typeof maybeCallback === "function") {
-        return connection.query(sql, paramsOrCallback, maybeCallback);
-    }
-
-    const params = Array.isArray(paramsOrCallback) ? paramsOrCallback : [];
-
-    return new Promise((resolve, reject) => {
-        connection.query(sql, params, (error, results) => {
-            if (error) {
-                return reject(error);
-            }
-
-            resolve(results);
-        });
-    });
+    return query(sql, paramsOrCallback, maybeCallback);
 }
 
 function endConnection() {
+    const connection = createConnection();
+
     connection.end((err) => {
         if (err) {
             console.error("Error ending the connection: ", err);
@@ -93,7 +92,6 @@ function endConnection() {
 }
 
 module.exports = {
-    connection,
     establishConnection,
     query,
     commitQuery,
