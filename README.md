@@ -66,8 +66,6 @@ curl -X DELETE http://localhost:3000/students/9090
 - Không commit `.env` hoặc `ca.pem` có credentials vào git. Nếu đã commit, xóa khỏi lịch sử và quay vòng (rotate) mật khẩu/keys trên Aiven.
 - Thêm `.env` và file sensitive vào `.gitignore`.
 ---
-File cấu hình đọc bởi code: [db.js](db.js) — kiểm tra tùy chọn SSL và biến môi trường.
 
-Nếu muốn, tôi có thể tạo sẵn một Collection Postman (.json) để bạn import.
 
 
